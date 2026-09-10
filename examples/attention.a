@@ -1,0 +1,46 @@
+// Single-head scaled dot-product attention with a causal mask,
+// showing derived dimensions, constraints, `if`, `let` and multi-axis reductions.
+module Attention {
+    dim B;
+    dim S;
+    dim D = 64;
+    dim Heads = 4;
+    dim Dh = D / Heads;
+    constraint D == Heads * Dh;
+
+    space Batch = Fin(B);
+    space Query = Fin(S);
+    space Key   = Fin(S);
+    space Model = Fin(D);
+    space Head  = Fin(Dh);
+
+    input x : Tensor<Real>[Batch, Query, Model];
+    input allowed : Tensor<Bool>[Query, Key];
+
+    param wq : Tensor<Real>[Model, Head];
+    param wk : Tensor<Real>[Model, Head];
+    param wv : Tensor<Real>[Model, Head];
+
+    const scale : Real = 1.0 / sqrt(real(Dh));
+    const neg_inf : Real = -1.0e30;
+
+    // Keys are the same positions as queries, read through the `Key` space.
+    input xk : Tensor<Real>[Batch, Key, Model];
+
+    def q[b : Batch, s : Query, h : Head] = sum[m : Model](x[b, s, m] * wq[m, h]);
+    def k[b : Batch, t : Key, h : Head]   = sum[m : Model](xk[b, t, m] * wk[m, h]);
+    def v[b : Batch, t : Key, h : Head]   = sum[m : Model](xk[b, t, m] * wv[m, h]);
+
+    def score[b : Batch, s : Query, t : Key] =
+        let dot = sum[h : Head](q[b, s, h] * k[b, t, h])
+        in if allowed[s, t] then dot * scale else neg_inf;
+
+    def rowmax[b : Batch, s : Query] = max[t : Key](score[b, s, t]);
+    def weight[b : Batch, s : Query, t : Key] = exp(score[b, s, t] - rowmax[b, s]);
+    def norm[b : Batch, s : Query] = sum[t : Key](weight[b, s, t]);
+    def attention[b : Batch, s : Query, t : Key] = weight[b, s, t] / norm[b, s];
+
+    def out[b : Batch, s : Query, h : Head] = sum[t : Key](attention[b, s, t] * v[b, t, h]);
+
+    output out, attention;
+}
