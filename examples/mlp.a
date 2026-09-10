@@ -1,0 +1,42 @@
+// Two-layer MLP with softmax output (spec section 27).
+module MLP {
+    dim B;
+    dim I;
+    dim H = 256;
+    dim O = 10;
+
+    space Batch  = Fin(B);
+    space Input  = Fin(I);
+    space Hidden = Fin(H);
+    space Output = Fin(O);
+
+    input x : Tensor<Real>[Batch, Input];
+
+    param w1 : Tensor<Real>[Input, Hidden];
+    param b1 : Tensor<Real>[Hidden];
+    param w2 : Tensor<Real>[Hidden, Output];
+    param b2 : Tensor<Real>[Output];
+
+    def preactivation[b : Batch, h : Hidden] =
+        sum[i : Input](x[b, i] * w1[i, h]) + b1[h];
+
+    def hidden[b : Batch, h : Hidden] =
+        relu(preactivation[b, h]);
+
+    def logits[b : Batch, o : Output] =
+        sum[h : Hidden](hidden[b, h] * w2[h, o]) + b2[o];
+
+    def maximum[b : Batch] =
+        max[o : Output](logits[b, o]);
+
+    def exponent[b : Batch, o : Output] =
+        exp(logits[b, o] - maximum[b]);
+
+    def denominator[b : Batch] =
+        sum[o : Output](exponent[b, o]);
+
+    def probability[b : Batch, o : Output] =
+        exponent[b, o] / denominator[b];
+
+    output probability;
+}
